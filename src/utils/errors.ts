@@ -306,6 +306,21 @@ export class TemplateError extends DiscordMCPError {
 }
 
 /**
+ * Error thrown when an operation requires the guild to have COMMUNITY enabled.
+ */
+export class CommunityRequiredError extends DiscordMCPError {
+  constructor(feature: string) {
+    super(
+      `"${feature}" requires the server to have the Community feature enabled.`,
+      'COMMUNITY_REQUIRED',
+      false,
+      'Run enable_community first (the bot needs ADMINISTRATOR), then retry.'
+    );
+    this.name = 'CommunityRequiredError';
+  }
+}
+
+/**
  * Type guard to check if an error is a DiscordMCPError
  */
 export function isDiscordMCPError(error: unknown): error is DiscordMCPError {

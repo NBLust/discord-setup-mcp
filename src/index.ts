@@ -118,6 +118,17 @@ import {
   ExportServerInputSchema,
 } from './tools/blueprint.js';
 
+// Import server-feature tools
+import { configureAutomodToolDefinition, configureAutomodHandler, ConfigureAutomodInputSchema } from './tools/automod.js';
+import { createScheduledEventToolDefinition, createScheduledEventHandler, CreateScheduledEventInputSchema } from './tools/events.js';
+import { createInviteToolDefinition, createInviteHandler, CreateInviteInputSchema } from './tools/invites.js';
+import {
+  enableCommunityToolDefinition, enableCommunityHandler, EnableCommunityInputSchema,
+  configureOnboardingToolDefinition, configureOnboardingHandler, ConfigureOnboardingInputSchema,
+  setWelcomeScreenToolDefinition, setWelcomeScreenHandler, SetWelcomeScreenInputSchema,
+} from './tools/community.js';
+import { setServerBrandingToolDefinition, setServerBrandingHandler, SetServerBrandingInputSchema } from './tools/branding.js';
+
 // Server metadata
 const SERVER_NAME = 'discord-setup-mcp';
 const SERVER_VERSION = '2.0.0'; // Major version bump for discord.js rewrite
@@ -314,6 +325,15 @@ Workflow:
   registerAsyncTool(server, 'apply_blueprint', applyBlueprintToolDefinition, ApplyBlueprintInputSchema, applyBlueprintHandler);
   registerAsyncTool(server, 'plan_blueprint', planBlueprintToolDefinition, PlanBlueprintInputSchema, planBlueprintHandler);
   registerAsyncTool(server, 'export_server', exportServerToolDefinition, ExportServerInputSchema, exportServerHandler);
+
+  // Register server-feature tools
+  registerAsyncTool(server, 'configure_automod', configureAutomodToolDefinition, ConfigureAutomodInputSchema, configureAutomodHandler);
+  registerAsyncTool(server, 'create_scheduled_event', createScheduledEventToolDefinition, CreateScheduledEventInputSchema, createScheduledEventHandler);
+  registerAsyncTool(server, 'create_invite', createInviteToolDefinition, CreateInviteInputSchema, createInviteHandler);
+  registerAsyncTool(server, 'enable_community', enableCommunityToolDefinition, EnableCommunityInputSchema, enableCommunityHandler);
+  registerAsyncTool(server, 'configure_onboarding', configureOnboardingToolDefinition, ConfigureOnboardingInputSchema, configureOnboardingHandler);
+  registerAsyncTool(server, 'set_welcome_screen', setWelcomeScreenToolDefinition, SetWelcomeScreenInputSchema, setWelcomeScreenHandler);
+  registerAsyncTool(server, 'set_server_branding', setServerBrandingToolDefinition, SetServerBrandingInputSchema, setServerBrandingHandler);
 
   return server;
 }
