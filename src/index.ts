@@ -83,6 +83,28 @@ import {
   ApplyTemplateInputSchema,
 } from './tools/templates.js';
 
+// Import content tools
+import {
+  sendMessageToolDefinition,
+  postEmbedToolDefinition,
+  pinMessageToolDefinition,
+  createForumPostToolDefinition,
+  postViaWebhookToolDefinition,
+  postMessageWithComponentsToolDefinition,
+  sendMessageHandler,
+  postEmbedHandler,
+  pinMessageHandler,
+  createForumPostHandler,
+  postViaWebhookHandler,
+  postMessageWithComponentsHandler,
+  SendMessageInputSchema,
+  PostEmbedInputSchema,
+  PinMessageInputSchema,
+  CreateForumPostInputSchema,
+  PostViaWebhookInputSchema,
+  PostMessageWithComponentsInputSchema,
+} from './tools/content.js';
+
 // Server metadata
 const SERVER_NAME = 'discord-setup-mcp';
 const SERVER_VERSION = '2.0.0'; // Major version bump for discord.js rewrite
@@ -266,6 +288,14 @@ Workflow:
     ApplyTemplateInputSchema,
     applyTemplateHandler
   );
+
+  // Register content tools
+  registerAsyncTool(server, 'send_message', sendMessageToolDefinition, SendMessageInputSchema, sendMessageHandler);
+  registerAsyncTool(server, 'post_embed', postEmbedToolDefinition, PostEmbedInputSchema, postEmbedHandler);
+  registerAsyncTool(server, 'pin_message', pinMessageToolDefinition, PinMessageInputSchema, pinMessageHandler);
+  registerAsyncTool(server, 'create_forum_post', createForumPostToolDefinition, CreateForumPostInputSchema, createForumPostHandler);
+  registerAsyncTool(server, 'post_via_webhook', postViaWebhookToolDefinition, PostViaWebhookInputSchema, postViaWebhookHandler);
+  registerAsyncTool(server, 'post_message_with_components', postMessageWithComponentsToolDefinition, PostMessageWithComponentsInputSchema, postMessageWithComponentsHandler);
 
   return server;
 }
