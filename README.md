@@ -25,24 +25,31 @@ Everything else — every channel, role, permission, message, AutoMod rule, even
 
 ## Prerequisites
 
-- **Node.js** 18+
-- A **Discord bot** (no privileged intents required)
+- **Node.js** 18 or higher
+- A **Discord bot** — created once in the Developer Portal (steps below). No privileged intents required.
 
-### 1. Create the bot
+### Step 1 — Create the application and bot
 
-1. Create an application at https://discord.com/developers/applications
-2. Add a bot and copy its token.
-3. **No privileged gateway intents are needed** — this server is REST-only.
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**. Name it (this becomes the bot's name) and create it.
+2. Open the **Bot** tab in the left sidebar (the bot user already exists for new apps; if prompted, click **Add Bot**).
+3. Under **Bot → Token**, click **Reset Token**, confirm, and **copy the token**. This is the secret you configure in [Configuration](#configuration) — treat it like a password and never commit it.
+4. **Privileged Gateway Intents — none required.** This server is REST-only and never opens a gateway connection, so leave Presence, Server Members, and Message Content **off**.
+5. From the **General Information** tab, copy the **Application ID** (you need it for the invite URL).
 
-### 2. Invite the bot
+### Step 2 — Invite the bot to your server
 
-Use an invite URL with the `bot` scope and Administrator permission (guild install):
+A bot **cannot create a server** (see [What it can and cannot do](#what-it-can-and-cannot-do)), so it has to be invited to one that already exists:
 
-```
-https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot+applications.commands&permissions=8
-```
+1. In Discord, create an empty server: the **+** button in the server sidebar → **Create My Own** → name it.
+2. Build this invite URL, replacing `YOUR_APP_ID` with your Application ID:
+   ```
+   https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot+applications.commands&permissions=8
+   ```
+3. Open it in a browser, pick your server in the **Add to Server** dropdown, and click **Authorize**.
 
-Administrator is recommended so the bot can manage roles/channels above lower roles, post content, manage webhooks, configure AutoMod, and enable Community. (The bot can still only manage roles **below** its own highest role.)
+`permissions=8` is **Administrator** — recommended, because the bot manages roles, channels, permissions, webhooks, AutoMod, and the Community feature stack on your behalf. Even with Administrator, Discord's hierarchy rule still applies: the bot can only manage roles **below** its own highest role, so keep the bot's role near the top of **Server Settings → Roles**.
+
+Once the bot is in your server, ask Claude something like *"list my Discord servers"* and start building.
 
 ## Installation
 
