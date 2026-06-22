@@ -131,7 +131,7 @@ import { setServerBrandingToolDefinition, setServerBrandingHandler, SetServerBra
 
 // Server metadata
 const SERVER_NAME = 'discord-setup-mcp';
-const SERVER_VERSION = '2.0.0'; // Major version bump for discord.js rewrite
+const SERVER_VERSION = '3.0.0'; // REST-only rewrite + blueprint engine + content layer
 
 /**
  * Create and configure the MCP server with all tools registered
@@ -352,10 +352,9 @@ function registerSyncTool<T extends z.ZodObject<any>>(
     error?: string;
   }
 ): void {
-  server.tool(
+  server.registerTool(
     definition.name,
-    definition.description,
-    schema.shape,
+    { description: definition.description, inputSchema: schema.shape },
     (params: unknown) => {
       try {
         // Validate input
@@ -420,10 +419,9 @@ function registerAsyncTool<T extends z.ZodObject<any>>(
     error?: string;
   }>
 ): void {
-  server.tool(
+  server.registerTool(
     definition.name,
-    definition.description,
-    schema.shape,
+    { description: definition.description, inputSchema: schema.shape },
     async (params: unknown) => {
       try {
         // Validate input
