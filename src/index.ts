@@ -8,7 +8,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { closeDiscordClient } from './client/discord.js';
 
 // Import guild tools
 import {
@@ -421,18 +420,12 @@ async function main() {
   await server.connect(transport);
 
   console.error(
-    'Discord Server Setup MCP Server running on stdio. Bot will connect on first tool call.'
+    'Discord Server Setup MCP Server running on stdio (REST-only; no gateway connection).'
   );
 
-  // Graceful shutdown handling
+  // Graceful shutdown handling — REST is stateless, nothing to close.
   const shutdown = async () => {
     console.error('Shutting down Discord MCP Server...');
-    try {
-      await closeDiscordClient();
-      console.error('Discord client closed successfully');
-    } catch (error) {
-      console.error('Error closing Discord client:', error);
-    }
     process.exit(0);
   };
 

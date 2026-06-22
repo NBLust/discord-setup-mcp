@@ -4,8 +4,7 @@
  */
 
 import { z } from 'zod';
-import { getDiscordClient } from '../client/discord.js';
-import { resolveGuild } from '../services/guild.js';
+import { resolveGuildId } from '../services/guild.js';
 import { applyTemplate, validateGuildForTemplate } from '../services/templates.js';
 import {
   listTemplates,
@@ -180,8 +179,7 @@ export async function applyTemplateHandler(
   input: ApplyTemplateInput
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
-    const client = await getDiscordClient();
-    const guild = await resolveGuild(client, input.guildId);
+    const guildId = await resolveGuildId(input.guildId);
 
     // Check if template exists
     if (!hasTemplate(input.templateId)) {
@@ -202,7 +200,7 @@ export async function applyTemplateHandler(
 
     // Validate guild if requested
     if (input.validate) {
-      const validation = validateGuildForTemplate(guild, rawTemplate);
+      const validation = await validateGuildForTemplate(guildId, rawTemplate);
 
       if (!validation.valid) {
         return {
@@ -223,26 +221,23 @@ export async function applyTemplateHandler(
     }
 
     // Apply template
-    console.error(`Applying template '${input.templateId}' to guild '${guild.name}'...`);
+    console.error(`Applying template '${input.templateId}' to guild ${guildId}...`);
 
-    const result = await applyTemplate(guild, rawTemplate, {
+    const result = await applyTemplate(guildId, rawTemplate, {
       skipRoles: input.skipRoles,
       skipCategories: input.skipCategories,
       throttleDelay: 500,
     });
 
-    console.error('Template application complete!');
-
     return {
       success: true,
       data: {
         templateId: input.templateId,
-        guildId: guild.id,
-        guildName: guild.name,
+        guildId,
         rolesCreated: result.rolesCreated,
         categoriesCreated: result.categoriesCreated,
         channelsCreated: result.channelsCreated,
-        message: `Template '${input.templateId}' applied successfully to '${guild.name}'. Created ${result.rolesCreated} roles, ${result.categoriesCreated} categories, and ${result.channelsCreated} channels.`,
+        message: `Template '${input.templateId}' applied successfully. Created ${result.rolesCreated} roles, ${result.categoriesCreated} categories, and ${result.channelsCreated} channels.`,
       },
     };
   } catch (error) {

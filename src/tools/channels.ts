@@ -1,28 +1,20 @@
 /**
- * Channel Management Tools
- * Tools for creating, editing, and deleting channels and categories using Discord Bot API
+ * Channel Management Tools — REST-only.
+ * Create/edit/delete channels and categories with permission overwrites.
  */
 
 import { z } from 'zod';
-import { ChannelType, GuildChannel, TextChannel, VoiceChannel, CategoryChannel, PermissionFlagsBits, OverwriteType } from 'discord.js';
-import { getDiscordClient } from '../client/discord.js';
-import { resolveGuild } from '../services/guild.js';
-import { wrapDiscordError, ChannelNotFoundError } from '../utils/errors.js';
+import { Routes } from 'discord.js';
+import { getRest } from '../client/rest.js';
+import { resolveGuildId } from '../services/guild.js';
+import { permissionNamesToBitfield } from '../services/permissions.js';
+import { wrapDiscordError } from '../utils/errors.js';
 
-// Convert SCREAMING_SNAKE_CASE to PascalCase for PermissionFlagsBits lookup
-function snakeToPascal(str: string): string {
-  return str.toLowerCase().split('_').map(word =>
-    word.charAt(0).toUpperCase() + word.slice(1)
-  ).join('');
-}
+const ChannelTypeSchema = z.enum(['text', 'voice', 'announcement', 'stage', 'forum', 'media']);
 
-// ============================================================================
-// VALIDATION SCHEMAS
-// ============================================================================
-
-const ChannelTypeSchema = z.enum(['text', 'voice', 'announcement', 'stage', 'forum'], {
-  errorMap: () => ({ message: 'Invalid channel type' }),
-});
+const CHANNEL_TYPE: Record<string, number> = {
+  text: 0, voice: 2, announcement: 5, stage: 13, forum: 15, media: 16,
+};
 
 const PermissionOverwriteSchema = z.object({
   id: z.string().describe('Role ID or user ID'),
@@ -31,44 +23,47 @@ const PermissionOverwriteSchema = z.object({
   deny: z.array(z.string()).optional().describe('Permissions to deny'),
 });
 
+function buildOverwrites(
+  overwrites: Array<{ id: string; type: 'role' | 'member'; allow?: string[]; deny?: string[] }> | undefined
+) {
+  if (!overwrites) return undefined;
+  return overwrites.map((o) => ({
+    id: o.id,
+    type: o.type === 'role' ? 0 : 1,
+    allow: permissionNamesToBitfield(o.allow ?? []),
+    deny: permissionNamesToBitfield(o.deny ?? []),
+  }));
+}
+
+const OVERWRITE_JSON_SCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Role ID or user ID' },
+      type: { type: 'string', enum: ['role', 'member'], description: 'Whether this is a role or user override' },
+      allow: { type: 'array', items: { type: 'string' }, description: 'Permissions to allow' },
+      deny: { type: 'array', items: { type: 'string' }, description: 'Permissions to deny' },
+    },
+    required: ['id', 'type'],
+  },
+  description: 'Permission overwrites for roles/users.',
+};
+
 // ============================================================================
 // CREATE CATEGORY
 // ============================================================================
 
 export const createCategoryToolDefinition = {
   name: 'create_category',
-  description:
-    'Creates a new category in a Discord server. Categories organize channels into groups.',
+  description: 'Creates a new category in a Discord server. Categories organize channels into groups.',
   inputSchema: {
     type: 'object',
     properties: {
-      guildId: {
-        type: 'string',
-        description:
-          'Guild ID or name. If not provided, uses the currently selected guild.',
-      },
-      name: {
-        type: 'string',
-        description: 'Name of the category (1-100 characters)',
-      },
-      position: {
-        type: 'number',
-        description: 'Position of the category in the channel list (optional)',
-      },
-      permissionOverwrites: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Role ID or user ID' },
-            type: { type: 'string', enum: ['role', 'member'], description: 'Whether this is a role or user override' },
-            allow: { type: 'array', items: { type: 'string' }, description: 'Permissions to allow' },
-            deny: { type: 'array', items: { type: 'string' }, description: 'Permissions to deny' },
-          },
-          required: ['id', 'type'],
-        },
-        description: 'Permission overwrites for roles/users. Use this to make the category private.',
-      },
+      guildId: { type: 'string', description: 'Guild ID or name. If not provided, uses the currently selected guild.' },
+      name: { type: 'string', description: 'Name of the category (1-100 characters)' },
+      position: { type: 'number', description: 'Position of the category in the channel list (optional)' },
+      permissionOverwrites: OVERWRITE_JSON_SCHEMA,
     },
     required: ['name'],
   },
@@ -80,74 +75,27 @@ export const CreateCategoryInputSchema = z.object({
   position: z.number().int().min(0).optional(),
   permissionOverwrites: z.array(PermissionOverwriteSchema).optional(),
 });
-
 export type CreateCategoryInput = z.infer<typeof CreateCategoryInputSchema>;
 
 export async function createCategoryHandler(
   input: CreateCategoryInput
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
-    const client = await getDiscordClient();
-    const guild = await resolveGuild(client, input.guildId);
-
-    // Build channel options
-    const channelOptions: any = {
+    const guildId = await resolveGuildId(input.guildId);
+    const body: any = {
       name: input.name,
-      type: ChannelType.GuildCategory,
+      type: 4,
       position: input.position,
+      permission_overwrites: buildOverwrites(input.permissionOverwrites),
     };
-
-    // Convert permission overwrites to Discord.js format
-    if (input.permissionOverwrites) {
-      channelOptions.permissionOverwrites = input.permissionOverwrites.map((overwrite) => {
-        let allowBitfield = BigInt(0);
-        let denyBitfield = BigInt(0);
-
-        if (overwrite.allow) {
-          for (const perm of overwrite.allow) {
-            const pascalPerm = snakeToPascal(perm);
-            if (pascalPerm in PermissionFlagsBits) {
-              allowBitfield |= PermissionFlagsBits[pascalPerm as keyof typeof PermissionFlagsBits];
-            }
-          }
-        }
-
-        if (overwrite.deny) {
-          for (const perm of overwrite.deny) {
-            const pascalPerm = snakeToPascal(perm);
-            if (pascalPerm in PermissionFlagsBits) {
-              denyBitfield |= PermissionFlagsBits[pascalPerm as keyof typeof PermissionFlagsBits];
-            }
-          }
-        }
-
-        return {
-          id: overwrite.id,
-          type: overwrite.type === 'role' ? OverwriteType.Role : OverwriteType.Member,
-          allow: allowBitfield.toString(),
-          deny: denyBitfield.toString(),
-        };
-      });
-    }
-
-    const category = await guild.channels.create(channelOptions);
-
+    const category = (await getRest().post(Routes.guildChannels(guildId), { body })) as any;
     return {
       success: true,
-      data: {
-        id: category.id,
-        name: category.name,
-        type: 'category',
-        position: category.position,
-        message: `Category "${category.name}" created successfully`,
-      },
+      data: { id: category.id, name: category.name, type: 'category', position: category.position, message: `Category "${category.name}" created successfully` },
     };
   } catch (error) {
     const mcpError = wrapDiscordError(error, 'create_category');
-    return {
-      success: false,
-      error: JSON.stringify(mcpError.toJSON()),
-    };
+    return { success: false, error: JSON.stringify(mcpError.toJSON()) };
   }
 }
 
@@ -157,67 +105,21 @@ export async function createCategoryHandler(
 
 export const createChannelToolDefinition = {
   name: 'create_channel',
-  description:
-    'Creates a new channel in a Discord server. Supports text, voice, announcement, stage, and forum channels.',
+  description: 'Creates a new channel in a Discord server. Supports text, voice, announcement, stage, forum, and media channels.',
   inputSchema: {
     type: 'object',
     properties: {
-      guildId: {
-        type: 'string',
-        description:
-          'Guild ID or name. If not provided, uses the currently selected guild.',
-      },
-      name: {
-        type: 'string',
-        description: 'Name of the channel (1-100 characters)',
-      },
-      type: {
-        type: 'string',
-        enum: ['text', 'voice', 'announcement', 'stage', 'forum'],
-        description: 'Type of channel to create (default: text)',
-      },
-      categoryId: {
-        type: 'string',
-        description: 'ID of the category to place this channel in (optional)',
-      },
-      topic: {
-        type: 'string',
-        description: 'Channel topic (text channels only, max 1024 characters)',
-      },
-      nsfw: {
-        type: 'boolean',
-        description: 'Whether the channel is age-restricted (default: false)',
-      },
-      slowmode: {
-        type: 'number',
-        description: 'Slowmode in seconds (text channels, 0-21600)',
-      },
-      bitrate: {
-        type: 'number',
-        description: 'Bitrate for voice channels (8000-384000)',
-      },
-      userLimit: {
-        type: 'number',
-        description: 'User limit for voice channels (0-99, 0 = unlimited)',
-      },
-      position: {
-        type: 'number',
-        description: 'Position in the channel list',
-      },
-      permissionOverwrites: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Role ID or user ID' },
-            type: { type: 'string', enum: ['role', 'member'], description: 'Whether this is a role or user override' },
-            allow: { type: 'array', items: { type: 'string' }, description: 'Permissions to allow' },
-            deny: { type: 'array', items: { type: 'string' }, description: 'Permissions to deny' },
-          },
-          required: ['id', 'type'],
-        },
-        description: 'Permission overwrites for roles/users.',
-      },
+      guildId: { type: 'string', description: 'Guild ID or name. If not provided, uses the currently selected guild.' },
+      name: { type: 'string', description: 'Name of the channel (1-100 characters)' },
+      type: { type: 'string', enum: ['text', 'voice', 'announcement', 'stage', 'forum', 'media'], description: 'Type of channel to create (default: text)' },
+      categoryId: { type: 'string', description: 'ID of the category to place this channel in (optional)' },
+      topic: { type: 'string', description: 'Channel topic (text/forum channels, max 1024 characters)' },
+      nsfw: { type: 'boolean', description: 'Whether the channel is age-restricted (default: false)' },
+      slowmode: { type: 'number', description: 'Slowmode in seconds (text channels, 0-21600)' },
+      bitrate: { type: 'number', description: 'Bitrate for voice channels (8000-384000)' },
+      userLimit: { type: 'number', description: 'User limit for voice channels (0-99, 0 = unlimited)' },
+      position: { type: 'number', description: 'Position in the channel list' },
+      permissionOverwrites: OVERWRITE_JSON_SCHEMA,
     },
     required: ['name'],
   },
@@ -236,91 +138,33 @@ export const CreateChannelInputSchema = z.object({
   position: z.number().int().min(0).optional(),
   permissionOverwrites: z.array(PermissionOverwriteSchema).optional(),
 });
-
 export type CreateChannelInput = z.infer<typeof CreateChannelInputSchema>;
 
 export async function createChannelHandler(
   input: CreateChannelInput
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
-    const client = await getDiscordClient();
-    const guild = await resolveGuild(client, input.guildId);
-
-    // Map our channel type to Discord.js ChannelType
-    const channelTypeMap: Record<string, ChannelType> = {
-      text: ChannelType.GuildText,
-      voice: ChannelType.GuildVoice,
-      announcement: ChannelType.GuildAnnouncement,
-      stage: ChannelType.GuildStageVoice,
-      forum: ChannelType.GuildForum,
-    };
-
-    const discordChannelType = channelTypeMap[input.type];
-
-    const channelOptions: any = {
+    const guildId = await resolveGuildId(input.guildId);
+    const body: any = {
       name: input.name,
-      type: discordChannelType,
-      parent: input.categoryId,
+      type: CHANNEL_TYPE[input.type],
+      parent_id: input.categoryId,
       topic: input.topic,
       nsfw: input.nsfw,
-      rateLimitPerUser: input.slowmode,
+      rate_limit_per_user: input.slowmode,
       bitrate: input.bitrate,
-      userLimit: input.userLimit,
+      user_limit: input.userLimit,
       position: input.position,
+      permission_overwrites: buildOverwrites(input.permissionOverwrites),
     };
-
-    // Convert permission overwrites to Discord.js format
-    if (input.permissionOverwrites) {
-      channelOptions.permissionOverwrites = input.permissionOverwrites.map((overwrite) => {
-        let allowBitfield = BigInt(0);
-        let denyBitfield = BigInt(0);
-
-        if (overwrite.allow) {
-          for (const perm of overwrite.allow) {
-            const pascalPerm = snakeToPascal(perm);
-            if (pascalPerm in PermissionFlagsBits) {
-              allowBitfield |= PermissionFlagsBits[pascalPerm as keyof typeof PermissionFlagsBits];
-            }
-          }
-        }
-
-        if (overwrite.deny) {
-          for (const perm of overwrite.deny) {
-            const pascalPerm = snakeToPascal(perm);
-            if (pascalPerm in PermissionFlagsBits) {
-              denyBitfield |= PermissionFlagsBits[pascalPerm as keyof typeof PermissionFlagsBits];
-            }
-          }
-        }
-
-        return {
-          id: overwrite.id,
-          type: overwrite.type === 'role' ? OverwriteType.Role : OverwriteType.Member,
-          allow: allowBitfield.toString(),
-          deny: denyBitfield.toString(),
-        };
-      });
-    }
-
-    const channel = await guild.channels.create(channelOptions);
-
+    const channel = (await getRest().post(Routes.guildChannels(guildId), { body })) as any;
     return {
       success: true,
-      data: {
-        id: channel.id,
-        name: channel.name,
-        type: input.type,
-        categoryId: channel.parentId,
-        position: channel.position,
-        message: `Channel "${channel.name}" created successfully`,
-      },
+      data: { id: channel.id, name: channel.name, type: input.type, categoryId: channel.parent_id, position: channel.position, message: `Channel "${channel.name}" created successfully` },
     };
   } catch (error) {
     const mcpError = wrapDiscordError(error, 'create_channel');
-    return {
-      success: false,
-      error: JSON.stringify(mcpError.toJSON()),
-    };
+    return { success: false, error: JSON.stringify(mcpError.toJSON()) };
   }
 }
 
@@ -330,66 +174,21 @@ export async function createChannelHandler(
 
 export const editChannelToolDefinition = {
   name: 'edit_channel',
-  description:
-    'Edits an existing channel in a Discord server. Can modify name, topic, permissions, and other settings.',
+  description: "Edits an existing channel in a Discord server. Can modify name, topic, permissions, and other settings.",
   inputSchema: {
     type: 'object',
     properties: {
-      guildId: {
-        type: 'string',
-        description:
-          'Guild ID or name. If not provided, uses the currently selected guild.',
-      },
-      channelId: {
-        type: 'string',
-        description: 'ID of the channel to edit',
-      },
-      name: {
-        type: 'string',
-        description: 'New name for the channel',
-      },
-      topic: {
-        type: 'string',
-        description: 'New topic (text channels only)',
-      },
-      nsfw: {
-        type: 'boolean',
-        description: 'Whether the channel is age-restricted',
-      },
-      slowmode: {
-        type: 'number',
-        description: 'Slowmode in seconds (text channels, 0-21600)',
-      },
-      bitrate: {
-        type: 'number',
-        description: 'Bitrate for voice channels (8000-384000)',
-      },
-      userLimit: {
-        type: 'number',
-        description: 'User limit for voice channels (0-99)',
-      },
-      position: {
-        type: 'number',
-        description: 'Position in the channel list',
-      },
-      categoryId: {
-        type: 'string',
-        description: 'ID of the category to move this channel to (null to remove from category)',
-      },
-      permissionOverwrites: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Role ID or user ID' },
-            type: { type: 'string', enum: ['role', 'member'], description: 'Whether this is a role or user override' },
-            allow: { type: 'array', items: { type: 'string' }, description: 'Permissions to allow' },
-            deny: { type: 'array', items: { type: 'string' }, description: 'Permissions to deny' },
-          },
-          required: ['id', 'type'],
-        },
-        description: 'Permission overwrites for roles/users. Use this to make channels private or grant specific access.',
-      },
+      guildId: { type: 'string', description: 'Guild ID or name. If not provided, uses the currently selected guild.' },
+      channelId: { type: 'string', description: 'ID of the channel to edit' },
+      name: { type: 'string', description: 'New name for the channel' },
+      topic: { type: 'string', description: 'New topic (text channels only)' },
+      nsfw: { type: 'boolean', description: 'Whether the channel is age-restricted' },
+      slowmode: { type: 'number', description: 'Slowmode in seconds (text channels, 0-21600)' },
+      bitrate: { type: 'number', description: 'Bitrate for voice channels (8000-384000)' },
+      userLimit: { type: 'number', description: 'User limit for voice channels (0-99)' },
+      position: { type: 'number', description: 'Position in the channel list' },
+      categoryId: { type: 'string', description: 'ID of the category to move this channel to (null to remove from category)' },
+      permissionOverwrites: OVERWRITE_JSON_SCHEMA,
     },
     required: ['channelId'],
   },
@@ -408,83 +207,32 @@ export const EditChannelInputSchema = z.object({
   categoryId: z.string().nullable().optional(),
   permissionOverwrites: z.array(PermissionOverwriteSchema).optional(),
 });
-
 export type EditChannelInput = z.infer<typeof EditChannelInputSchema>;
 
 export async function editChannelHandler(
   input: EditChannelInput
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
-    const client = await getDiscordClient();
-    const guild = await resolveGuild(client, input.guildId);
+    await resolveGuildId(input.guildId); // validate context
+    const body: any = {};
+    if (input.name !== undefined) body.name = input.name;
+    if (input.topic !== undefined) body.topic = input.topic;
+    if (input.nsfw !== undefined) body.nsfw = input.nsfw;
+    if (input.slowmode !== undefined) body.rate_limit_per_user = input.slowmode;
+    if (input.bitrate !== undefined) body.bitrate = input.bitrate;
+    if (input.userLimit !== undefined) body.user_limit = input.userLimit;
+    if (input.position !== undefined) body.position = input.position;
+    if (input.categoryId !== undefined) body.parent_id = input.categoryId;
+    if (input.permissionOverwrites !== undefined) body.permission_overwrites = buildOverwrites(input.permissionOverwrites);
 
-    const channel = guild.channels.cache.get(input.channelId);
-    if (!channel) {
-      throw new ChannelNotFoundError(input.channelId);
-    }
-
-    // Build edit options (only include provided fields)
-    const editOptions: any = {};
-    if (input.name !== undefined) editOptions.name = input.name;
-    if (input.topic !== undefined) editOptions.topic = input.topic;
-    if (input.nsfw !== undefined) editOptions.nsfw = input.nsfw;
-    if (input.slowmode !== undefined) editOptions.rateLimitPerUser = input.slowmode;
-    if (input.bitrate !== undefined) editOptions.bitrate = input.bitrate;
-    if (input.userLimit !== undefined) editOptions.userLimit = input.userLimit;
-    if (input.position !== undefined) editOptions.position = input.position;
-    if (input.categoryId !== undefined) editOptions.parent = input.categoryId;
-
-    // Convert permission overwrites to Discord.js format
-    if (input.permissionOverwrites !== undefined) {
-      editOptions.permissionOverwrites = input.permissionOverwrites.map((overwrite) => {
-        // Convert permission names to bitfield
-        let allowBitfield = BigInt(0);
-        let denyBitfield = BigInt(0);
-
-        if (overwrite.allow) {
-          for (const perm of overwrite.allow) {
-            const pascalPerm = snakeToPascal(perm);
-            if (pascalPerm in PermissionFlagsBits) {
-              allowBitfield |= PermissionFlagsBits[pascalPerm as keyof typeof PermissionFlagsBits];
-            }
-          }
-        }
-
-        if (overwrite.deny) {
-          for (const perm of overwrite.deny) {
-            const pascalPerm = snakeToPascal(perm);
-            if (pascalPerm in PermissionFlagsBits) {
-              denyBitfield |= PermissionFlagsBits[pascalPerm as keyof typeof PermissionFlagsBits];
-            }
-          }
-        }
-
-        return {
-          id: overwrite.id,
-          type: overwrite.type === 'role' ? OverwriteType.Role : OverwriteType.Member,
-          allow: allowBitfield.toString(),
-          deny: denyBitfield.toString(),
-        };
-      });
-    }
-
-    const updatedChannel = await channel.edit(editOptions);
-
+    const channel = (await getRest().patch(Routes.channel(input.channelId), { body })) as any;
     return {
       success: true,
-      data: {
-        id: updatedChannel.id,
-        name: updatedChannel.name,
-        type: updatedChannel.type,
-        message: `Channel "${updatedChannel.name}" updated successfully`,
-      },
+      data: { id: channel.id, name: channel.name, type: channel.type, message: `Channel "${channel.name}" updated successfully` },
     };
   } catch (error) {
     const mcpError = wrapDiscordError(error, 'edit_channel');
-    return {
-      success: false,
-      error: JSON.stringify(mcpError.toJSON()),
-    };
+    return { success: false, error: JSON.stringify(mcpError.toJSON()) };
   }
 }
 
@@ -494,20 +242,12 @@ export async function editChannelHandler(
 
 export const deleteChannelToolDefinition = {
   name: 'delete_channel',
-  description:
-    'Deletes a channel from a Discord server. This action cannot be undone.',
+  description: 'Deletes a channel from a Discord server. This action cannot be undone.',
   inputSchema: {
     type: 'object',
     properties: {
-      guildId: {
-        type: 'string',
-        description:
-          'Guild ID or name. If not provided, uses the currently selected guild.',
-      },
-      channelId: {
-        type: 'string',
-        description: 'ID of the channel to delete',
-      },
+      guildId: { type: 'string', description: 'Guild ID or name. If not provided, uses the currently selected guild.' },
+      channelId: { type: 'string', description: 'ID of the channel to delete' },
     },
     required: ['channelId'],
   },
@@ -517,35 +257,17 @@ export const DeleteChannelInputSchema = z.object({
   guildId: z.string().optional(),
   channelId: z.string().min(1, 'Channel ID is required'),
 });
-
 export type DeleteChannelInput = z.infer<typeof DeleteChannelInputSchema>;
 
 export async function deleteChannelHandler(
   input: DeleteChannelInput
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   try {
-    const client = await getDiscordClient();
-    const guild = await resolveGuild(client, input.guildId);
-
-    const channel = guild.channels.cache.get(input.channelId);
-    if (!channel) {
-      throw new ChannelNotFoundError(input.channelId);
-    }
-
-    const channelName = channel.name;
-    await channel.delete();
-
-    return {
-      success: true,
-      data: {
-        message: `Channel "${channelName}" deleted successfully`,
-      },
-    };
+    await resolveGuildId(input.guildId);
+    await getRest().delete(Routes.channel(input.channelId));
+    return { success: true, data: { message: `Channel ${input.channelId} deleted successfully` } };
   } catch (error) {
     const mcpError = wrapDiscordError(error, 'delete_channel');
-    return {
-      success: false,
-      error: JSON.stringify(mcpError.toJSON()),
-    };
+    return { success: false, error: JSON.stringify(mcpError.toJSON()) };
   }
 }
