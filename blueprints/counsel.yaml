@@ -1,0 +1,152 @@
+# Counsel — parimutuel prediction market on XRPL.
+# Apply with: apply_blueprint({ file: "blueprints/counsel.yaml" })
+# Run plan_blueprint first to preview. Re-applying is idempotent.
+# Note: #announcements is a plain text channel kept read-only via overwrites.
+# To make it a true Announcement channel (+ Stage voice, onboarding, welcome
+# screen) run enable_community first, then switch its type to "announcement".
+
+guild:
+  verificationLevel: low
+  contentFilter: all_members
+
+roles:
+  - name: Team
+    color: "#5865F2"
+    hoist: true
+    mentionable: true
+    permissions: [MANAGE_CHANNELS, MANAGE_ROLES, MANAGE_MESSAGES, KICK_MEMBERS, BAN_MEMBERS, MODERATE_MEMBERS, MANAGE_EVENTS]
+  - name: Resolver
+    color: "#EB459E"
+    hoist: true
+    mentionable: true
+    permissions: [MANAGE_MESSAGES, MANAGE_EVENTS]
+  - name: Verified
+    color: "#57F287"
+    permissions: [VIEW_CHANNEL, SEND_MESSAGES, CONNECT, SPEAK, ADD_REACTIONS, READ_MESSAGE_HISTORY]
+  - name: Holder
+    color: "#FEE75C"
+    hoist: true
+    mentionable: true
+    permissions: [VIEW_CHANNEL, SEND_MESSAGES]
+
+categories:
+  - name: INFO
+    channels:
+      - name: announcements
+        type: text
+        topic: "Official Counsel announcements."
+        overwrites:
+          - role: "@everyone"
+            deny: [SEND_MESSAGES]
+      - name: rules
+        type: text
+        topic: "Read before participating."
+        overwrites:
+          - role: "@everyone"
+            deny: [SEND_MESSAGES]
+        messages:
+          - pin: true
+            embed:
+              title: "Counsel — Rules"
+              color: "#5865F2"
+              description: |
+                1. Be respectful. No spam, scams, or shilling.
+                2. No financial advice. Markets are parimutuel — outcomes pay from the pool.
+                3. Keep market talk in the MARKETS channels.
+                4. Disputes on resolutions go to #resolutions, not DMs.
+              footer:
+                text: "React below to get the Verified role once reaction-roles are set up."
+      - name: start-here
+        type: text
+        topic: "How Counsel works."
+        messages:
+          - pin: true
+            embed:
+              title: "How a parimutuel market works"
+              color: "#57F287"
+              description: |
+                Everyone bets into a shared pool. When the market resolves, the
+                winning side splits the entire pool pro-rata to their stake
+                (minus fees). No house, no fixed odds — the crowd sets the price.
+              fields:
+                - name: "Markets"
+                  value: "Browse #live-markets, discuss in #market-discussion."
+                - name: "Proposals"
+                  value: "Suggest new markets in #market-proposals."
+                - name: "Resolutions"
+                  value: "Outcomes and disputes are posted in #resolutions."
+      - name: roadmap
+        type: text
+        topic: "What's shipping next."
+
+  - name: MARKETS
+    channels:
+      - name: live-markets
+        type: text
+        topic: "Currently open markets."
+      - name: market-discussion
+        type: text
+      - name: resolutions
+        type: text
+        topic: "Resolved outcomes and dispute handling."
+      - name: market-proposals
+        type: forum
+        topic: "Propose new markets. One thread per proposal."
+
+  - name: GOVERNANCE
+    channels:
+      - name: governance
+        type: text
+      - name: proposals
+        type: forum
+        topic: "Protocol/governance proposals."
+      - name: voting
+        type: text
+
+  - name: COMMUNITY
+    channels:
+      - name: gm
+        type: text
+      - name: price-talk
+        type: text
+      - name: introductions
+        type: text
+
+  - name: SUPPORT
+    channels:
+      - name: support
+        type: forum
+        topic: "Open a thread for help."
+      - name: faq
+        type: text
+        overwrites:
+          - role: "@everyone"
+            deny: [SEND_MESSAGES]
+        messages:
+          - pin: true
+            embed:
+              title: "FAQ"
+              color: "#FEE75C"
+              fields:
+                - name: "What chain is Counsel on?"
+                  value: "XRPL (L1)."
+                - name: "How do payouts work?"
+                  value: "Parimutuel: the winning side splits the pool pro-rata."
+                - name: "How do I propose a market?"
+                  value: "Open a thread in #market-proposals."
+
+  - name: DEV
+    channels:
+      - name: xrpl-dev
+        type: text
+      - name: api
+        type: text
+      - name: bug-reports
+        type: text
+
+  - name: VOICE
+    channels:
+      - name: Community
+        type: voice
+      - name: Markets Voice
+        type: voice
