@@ -105,6 +105,19 @@ import {
   PostMessageWithComponentsInputSchema,
 } from './tools/content.js';
 
+// Import blueprint tools
+import {
+  applyBlueprintToolDefinition,
+  planBlueprintToolDefinition,
+  exportServerToolDefinition,
+  applyBlueprintHandler,
+  planBlueprintHandler,
+  exportServerHandler,
+  ApplyBlueprintInputSchema,
+  PlanBlueprintInputSchema,
+  ExportServerInputSchema,
+} from './tools/blueprint.js';
+
 // Server metadata
 const SERVER_NAME = 'discord-setup-mcp';
 const SERVER_VERSION = '2.0.0'; // Major version bump for discord.js rewrite
@@ -296,6 +309,11 @@ Workflow:
   registerAsyncTool(server, 'create_forum_post', createForumPostToolDefinition, CreateForumPostInputSchema, createForumPostHandler);
   registerAsyncTool(server, 'post_via_webhook', postViaWebhookToolDefinition, PostViaWebhookInputSchema, postViaWebhookHandler);
   registerAsyncTool(server, 'post_message_with_components', postMessageWithComponentsToolDefinition, PostMessageWithComponentsInputSchema, postMessageWithComponentsHandler);
+
+  // Register blueprint tools
+  registerAsyncTool(server, 'apply_blueprint', applyBlueprintToolDefinition, ApplyBlueprintInputSchema, applyBlueprintHandler);
+  registerAsyncTool(server, 'plan_blueprint', planBlueprintToolDefinition, PlanBlueprintInputSchema, planBlueprintHandler);
+  registerAsyncTool(server, 'export_server', exportServerToolDefinition, ExportServerInputSchema, exportServerHandler);
 
   return server;
 }
