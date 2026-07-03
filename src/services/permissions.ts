@@ -1,4 +1,5 @@
 import { PermissionFlagsBits } from 'discord.js';
+import { ValidationError } from '../utils/errors.js';
 
 /**
  * Centralized Discord permission name <-> bitfield mapping.
@@ -8,6 +9,10 @@ import { PermissionFlagsBits } from 'discord.js';
  * This module is the single source of truth, including the Nov-2025 permission
  * split bits (PIN_MESSAGES, BYPASS_SLOWMODE, CREATE_GUILD_EXPRESSIONS,
  * CREATE_EVENTS) that older static maps miss.
+ *
+ * Unknown names are a hard error: silently dropping a permission from an
+ * overwrite (e.g. a typo'd VIEW_CHANNEL deny) can leave a channel exposed
+ * that the caller believed was locked down.
  */
 
 function snakeToPascal(s: string): string {
@@ -18,7 +23,8 @@ function snakeToPascal(s: string): string {
     .join('');
 }
 
-// Explicit overrides where simple snake->pascal does not match discord.js keys.
+// Canonical 1:1 overrides where simple snake->pascal does not match discord.js
+// keys. These are also used for the reverse (bitfield -> name) mapping.
 const ALIASES: Record<string, keyof typeof PermissionFlagsBits> = {
   PIN_MESSAGES: 'PinMessages',
   BYPASS_SLOWMODE: 'BypassSlowmode',
@@ -32,6 +38,7 @@ const ALIASES: Record<string, keyof typeof PermissionFlagsBits> = {
   USE_APPLICATION_COMMANDS: 'UseApplicationCommands',
   USE_EMBEDDED_ACTIVITIES: 'UseEmbeddedActivities',
   USE_EXTERNAL_SOUNDS: 'UseExternalSounds',
+  USE_EXTERNAL_APPS: 'UseExternalApps',
   USE_SOUNDBOARD: 'UseSoundboard',
   SEND_VOICE_MESSAGES: 'SendVoiceMessages',
   REQUEST_TO_SPEAK: 'RequestToSpeak',
@@ -40,18 +47,46 @@ const ALIASES: Record<string, keyof typeof PermissionFlagsBits> = {
   VIEW_CREATOR_MONETIZATION_ANALYTICS: 'ViewCreatorMonetizationAnalytics',
 };
 
+// Forward-only synonyms: names Discord's UI (or older versions of this
+// project) use for permissions whose API name differs. Never emitted by the
+// reverse mapping.
+const LEGACY_ALIASES: Record<string, keyof typeof PermissionFlagsBits> = {
+  MANAGE_SERVER: 'ManageGuild',
+  TIMEOUT_MEMBERS: 'ModerateMembers',
+  VIDEO: 'Stream',
+  VIEW_CHANNELS: 'ViewChannel',
+  CREATE_INVITE: 'CreateInstantInvite',
+  USE_VOICE_ACTIVITY: 'UseVAD',
+  USE_EXTERNAL_EMOJI: 'UseExternalEmojis',
+  USE_ACTIVITIES: 'UseEmbeddedActivities',
+  MANAGE_EMOJIS_AND_STICKERS: 'ManageGuildExpressions',
+};
+
+// Deprecated discord.js keys that duplicate another key's bit; excluded from
+// the reverse mapping so each bit round-trips to exactly one name.
+const REVERSE_EXCLUDED = new Set(['ManageEmojisAndStickers']);
+
 function resolveKey(name: string): keyof typeof PermissionFlagsBits | undefined {
   if (ALIASES[name]) return ALIASES[name];
+  if (LEGACY_ALIASES[name]) return LEGACY_ALIASES[name];
   const pascal = snakeToPascal(name) as keyof typeof PermissionFlagsBits;
   return pascal in PermissionFlagsBits ? pascal : undefined;
 }
 
-/** Convert an array of SCREAMING_SNAKE_CASE permission names to a bitfield string. */
+/**
+ * Convert an array of SCREAMING_SNAKE_CASE permission names to a bitfield
+ * string. Throws ValidationError on names that do not map to a permission.
+ */
 export function permissionNamesToBitfield(names: string[]): string {
   let bf = 0n;
   for (const n of names) {
     const key = resolveKey(n);
-    if (key) bf |= PermissionFlagsBits[key];
+    if (!key) {
+      throw new ValidationError(
+        `Unknown permission name: "${n}". Use SCREAMING_SNAKE_CASE Discord API names (e.g. VIEW_CHANNEL, MANAGE_MESSAGES).`
+      );
+    }
+    bf |= PermissionFlagsBits[key];
   }
   return bf.toString();
 }
@@ -73,9 +108,19 @@ export function bitfieldToPermissionNames(bitfield: string | bigint): string[] {
   const bf = BigInt(bitfield);
   const out: string[] = [];
   for (const [pascalKey, bit] of Object.entries(PermissionFlagsBits) as [string, bigint][]) {
+    if (REVERSE_EXCLUDED.has(pascalKey)) continue;
     if (bit !== 0n && (bf & bit) === bit) {
       out.push(pascalToSnake(pascalKey));
     }
   }
   return out;
 }
+
+/**
+ * Every valid SCREAMING_SNAKE permission name, derived from the installed
+ * discord.js so new bits are picked up automatically. Use this for input
+ * schemas instead of hand-maintained lists.
+ */
+export const PERMISSION_NAMES: readonly string[] = Object.keys(PermissionFlagsBits)
+  .filter((k) => !REVERSE_EXCLUDED.has(k))
+  .map(pascalToSnake);

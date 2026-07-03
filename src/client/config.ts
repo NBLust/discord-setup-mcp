@@ -21,11 +21,10 @@ export const ConfigSchema = z.object({
   rateLimit: z
     .object({
       maxRetries: z.number().int().positive().default(3),
-      retryDelay: z.number().int().positive().default(1000),
     })
     .optional()
-    .default({ maxRetries: 3, retryDelay: 1000 })
-    .describe('Rate limit retry configuration'),
+    .default({ maxRetries: 3 })
+    .describe('Retry count for 5xx/timeout errors (429s are always waited out by the REST client)'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -58,9 +57,6 @@ export function getConfig(): Config {
           maxRetries: process.env.DISCORD_RATE_LIMIT_MAX_RETRIES
             ? parseInt(process.env.DISCORD_RATE_LIMIT_MAX_RETRIES, 10)
             : 3,
-          retryDelay: process.env.DISCORD_RATE_LIMIT_RETRY_DELAY
-            ? parseInt(process.env.DISCORD_RATE_LIMIT_RETRY_DELAY, 10)
-            : 1000,
         },
       });
       cachedConfig = config;

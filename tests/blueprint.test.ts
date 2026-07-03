@@ -50,4 +50,12 @@ describe('BlueprintZ', () => {
   it('rejects a bad channel type', () => {
     expect(BlueprintZ.safeParse({ categories: [{ name: 'C', channels: [{ name: 'x', type: 'bogus' }] }] }).success).toBe(false);
   });
+  it('validates seeded message embeds at load time', () => {
+    const withEmbed = (embed: unknown) => ({
+      categories: [{ name: 'C', channels: [{ name: 'x', messages: [{ embed }] }] }],
+    });
+    expect(BlueprintZ.safeParse(withEmbed({ title: 'ok', fields: [{ name: 'a', value: 'b' }] })).success).toBe(true);
+    expect(BlueprintZ.safeParse(withEmbed({ title: 123 })).success).toBe(false);
+    expect(BlueprintZ.safeParse(withEmbed({ fields: [{ name: 'a' }] })).success).toBe(false);
+  });
 });

@@ -14,8 +14,10 @@ import { Routes } from 'discord.js';
 import { getRest } from '../client/rest.js';
 import { fetchChannels, fetchRoles } from './guild.js';
 import { permissionNamesToBitfield, bitfieldToPermissionNames } from './permissions.js';
-import { buildEmbed, type EmbedInput } from './content.js';
+import { buildEmbed, EmbedZ, type EmbedInput } from './content.js';
+import { pinMessage } from './messages.js';
 import { ValidationError } from '../utils/errors.js';
+import { parseColor } from '../utils/color.js';
 
 // ============================================================================
 // SCHEMA
@@ -29,7 +31,7 @@ const OverwriteZ = z.object({
 
 const MessageZ = z.object({
   content: z.string().optional(),
-  embed: z.any().optional(),
+  embed: EmbedZ.optional(),
   pin: z.boolean().optional(),
 });
 
@@ -82,11 +84,7 @@ const NOTIFICATIONS: Record<string, number> = { all_messages: 0, only_mentions: 
 const CHANNEL_TYPE: Record<string, number> = { text: 0, voice: 2, announcement: 5, stage: 13, forum: 15, media: 16 };
 const CHANNEL_TYPE_NAME: Record<number, string> = { 0: 'text', 2: 'voice', 5: 'announcement', 13: 'stage', 15: 'forum', 16: 'media' };
 const GATED_TYPES = new Set(['announcement', 'stage']); // require COMMUNITY
-
-function colorToInt(color: string | number | undefined): number | undefined {
-  if (color === undefined) return undefined;
-  return typeof color === 'string' ? parseInt(color.replace('#', ''), 16) : color;
-}
+const SEEDABLE_TYPES = new Set([0, 5]); // text + announcement accept plain messages
 
 // ============================================================================
 // LOADER
@@ -143,7 +141,7 @@ export function classifyByName<D extends { name: string }, L extends { name: str
 
 function roleEqual(d: z.infer<typeof RoleZ>, live: any): boolean {
   const desiredPerms = d.permissions ? permissionNamesToBitfield(d.permissions) : undefined;
-  const desiredColor = colorToInt(d.color);
+  const desiredColor = parseColor(d.color);
   if (desiredPerms !== undefined && String(live.permissions) !== desiredPerms) return false;
   if (desiredColor !== undefined && live.color !== desiredColor) return false;
   if (d.hoist !== undefined && live.hoist !== d.hoist) return false;
@@ -155,6 +153,8 @@ function channelEqual(d: z.infer<typeof ChannelZ>, live: any): boolean {
   if (d.topic !== undefined && (live.topic ?? '') !== d.topic) return false;
   if (d.nsfw !== undefined && Boolean(live.nsfw) !== d.nsfw) return false;
   if (d.slowmode !== undefined && (live.rate_limit_per_user ?? 0) !== d.slowmode) return false;
+  if (d.bitrate !== undefined && live.bitrate !== d.bitrate) return false;
+  if (d.userLimit !== undefined && (live.user_limit ?? 0) !== d.userLimit) return false;
   return true;
 }
 
@@ -178,16 +178,31 @@ export async function planBlueprint(guildId: string, bp: Blueprint) {
     roleEqual
   );
 
+  // Overwrites reference roles by name; anything not live or defined in the
+  // blueprint would be silently dropped at apply time — surface it here.
+  const knownRoles = new Set<string>(['@everyone']);
+  for (const r of liveRoles) knownRoles.add(r.name.toLowerCase());
+  for (const r of bp.roles ?? []) knownRoles.add(r.name.toLowerCase());
+  const checkOverwrites = (owner: string, ows?: Array<{ role: string }>) => {
+    for (const o of ows ?? []) {
+      if (!knownRoles.has(o.role.toLowerCase())) {
+        warnings.push(`Overwrite on "${owner}" references unknown role "${o.role}"; it would be skipped.`);
+      }
+    }
+  };
+
   let catCreate = 0, chCreate = 0, chUpdate = 0, chSkip = 0;
   for (const cat of bp.categories ?? []) {
     const liveCat = liveChannels.find((c: any) => c.type === 4 && c.name.toLowerCase() === cat.name.toLowerCase());
     if (!liveCat) catCreate++;
+    checkOverwrites(cat.name, cat.overwrites);
     const siblings = liveCat ? liveChannels.filter((c: any) => c.parent_id === liveCat.id) : [];
     const chClass = classifyByName(siblings, cat.channels, channelEqual);
     chCreate += chClass.create.length;
     chUpdate += chClass.update.length;
     chSkip += chClass.skip.length;
     for (const ch of cat.channels) {
+      checkOverwrites(ch.name, ch.overwrites);
       if (GATED_TYPES.has(ch.type) && !isCommunity) {
         warnings.push(`Channel "${ch.name}" (${ch.type}) needs a Community-enabled server; will be skipped. Run enable_community first.`);
       }
@@ -218,25 +233,20 @@ function delay(ms: number) {
 
 function buildOverwrites(
   overwrites: Array<{ role: string; allow?: string[]; deny?: string[] }> | undefined,
-  roleMap: Map<string, string>
+  roleMap: Map<string, string>,
+  warnings?: string[]
 ) {
   if (!overwrites) return undefined;
   const out = [];
   for (const o of overwrites) {
     const id = roleMap.get(o.role.toLowerCase());
-    if (!id) continue;
+    if (!id) {
+      warnings?.push(`Skipped permission overwrite for unknown role "${o.role}".`);
+      continue;
+    }
     out.push({ id, type: 0, allow: permissionNamesToBitfield(o.allow ?? []), deny: permissionNamesToBitfield(o.deny ?? []) });
   }
   return out;
-}
-
-async function pinMessage(channelId: string, messageId: string) {
-  try {
-    await getRest().put(`/channels/${channelId}/messages/pins/${messageId}`);
-  } catch (e: any) {
-    if (e?.status === 404) await getRest().put(Routes.channelPin(channelId, messageId));
-    else throw e;
-  }
 }
 
 export async function applyBlueprint(
@@ -276,7 +286,7 @@ export async function applyBlueprint(
     const body: any = {};
     if (r.hoist !== undefined) body.hoist = r.hoist;
     if (r.mentionable !== undefined) body.mentionable = r.mentionable;
-    const colorInt = colorToInt(r.color);
+    const colorInt = parseColor(r.color);
     if (colorInt !== undefined) body.color = colorInt;
     if (r.permissions) body.permissions = permissionNamesToBitfield(r.permissions);
     if (!live) {
@@ -304,7 +314,7 @@ export async function applyBlueprint(
     let catId: string;
     if (!liveCat) {
       const created = (await rest.post(Routes.guildChannels(guildId), {
-        body: { name: cat.name, type: 4, permission_overwrites: buildOverwrites(cat.overwrites, roleMap) },
+        body: { name: cat.name, type: 4, permission_overwrites: buildOverwrites(cat.overwrites, roleMap, report.warnings) },
       })) as any;
       catId = created.id;
       liveChannels.push(created);
@@ -325,7 +335,7 @@ export async function applyBlueprint(
       );
       if (!live) {
         const body: any = { name: ch.name, type: CHANNEL_TYPE[ch.type] ?? 0, parent_id: catId };
-        const ow = buildOverwrites(ch.overwrites, roleMap);
+        const ow = buildOverwrites(ch.overwrites, roleMap, report.warnings);
         if (ow && ow.length) body.permission_overwrites = ow;
         if (ch.topic !== undefined) body.topic = ch.topic;
         if (ch.nsfw !== undefined) body.nsfw = ch.nsfw;
@@ -338,7 +348,7 @@ export async function applyBlueprint(
         await delay(throttle);
 
         // Seed messages ONLY on creation (keeps re-apply idempotent)
-        if (seed && ch.messages && CHANNEL_TYPE[ch.type] === 0) {
+        if (seed && ch.messages && SEEDABLE_TYPES.has(CHANNEL_TYPE[ch.type] ?? 0)) {
           for (const m of ch.messages) {
             const msgBody: any = {};
             if (m.content) msgBody.content = m.content;
@@ -355,6 +365,8 @@ export async function applyBlueprint(
         if (ch.topic !== undefined) body.topic = ch.topic;
         if (ch.nsfw !== undefined) body.nsfw = ch.nsfw;
         if (ch.slowmode !== undefined) body.rate_limit_per_user = ch.slowmode;
+        if (ch.bitrate !== undefined) body.bitrate = ch.bitrate;
+        if (ch.userLimit !== undefined) body.user_limit = ch.userLimit;
         await rest.patch(Routes.channel(live.id), { body });
         report.channelsUpdated++;
         await delay(throttle);

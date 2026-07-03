@@ -1,12 +1,23 @@
 {
   "name": "discord-setup-mcp",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "MCP server for automating Discord server setup using Discord Bot API - cross-platform, fast, and reliable",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "discord-setup-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gamween/discord-setup-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gamween/discord-setup-mcp/issues"
+  },
+  "homepage": "https://github.com/gamween/discord-setup-mcp#readme",
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

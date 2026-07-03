@@ -54,7 +54,7 @@ Once the bot is in your server, ask Claude something like *"list my Discord serv
 ## Installation
 
 ```bash
-git clone https://github.com/cj-vana/discord-setup-mcp.git
+git clone https://github.com/gamween/discord-setup-mcp.git
 cd discord-setup-mcp
 npm install
 npm run build
@@ -141,7 +141,7 @@ Overwrites reference role **names** (or `@everyone`).
 **Server features:** `configure_automod`, `create_scheduled_event`, `create_invite`, `enable_community`, `configure_onboarding`, `set_welcome_screen`, `set_server_branding`
 **Templates:** `list_templates`, `preview_template`, `apply_template`
 
-Permission names use `SCREAMING_SNAKE_CASE` (e.g. `VIEW_CHANNEL`, `MANAGE_MESSAGES`, `PIN_MESSAGES`). Permission overwrites: `{ id, type: "role"|"member", allow: [...], deny: [...] }`.
+Permission names use `SCREAMING_SNAKE_CASE` (e.g. `VIEW_CHANNEL`, `MANAGE_MESSAGES`, `PIN_MESSAGES`). Common UI-style synonyms are accepted too (`MANAGE_SERVER`, `TIMEOUT_MEMBERS`, `VIDEO`, …); anything unrecognized is rejected with an error rather than silently dropped. Permission overwrites: `{ id, type: "role"|"member", allow: [...], deny: [...] }`.
 
 ## Limits (what a bot genuinely cannot do)
 
@@ -172,6 +172,7 @@ See [CLAUDE.md](CLAUDE.md) for development docs.
 
 ## Version History
 
+- **3.1.0** — Strict permission-name mapping: unknown names now raise a clear error instead of being silently dropped (a typo'd `deny` could previously leave a channel exposed), with legacy/UI synonyms (`MANAGE_SERVER`, `TIMEOUT_MEMBERS`, `VIDEO`, …) accepted; permission list for `create_role`/`edit_role` derived from discord.js (picks up `SEND_POLLS`, `USE_EXTERNAL_APPS`, `SET_VOICE_CHANNEL_STATUS`); blueprint embeds validated at load time; `plan_blueprint`/`apply_blueprint` warn about overwrites referencing unknown roles; blueprints seed messages in announcement channels and diff/patch voice `bitrate`/`userLimit`; invalid colors rejected instead of sent as `NaN`; `rateLimit.maxRetries` config now actually wired into the REST client; removed dead v2 validation module.
 - **3.0.0** — REST-only rewrite (removed gateway/privileged intents); custom **blueprint engine** (inline + YAML/JSON, idempotent apply, dry-run plan, export); **content layer** (messages, embeds, pins, forum posts, webhooks, link buttons); **server features** (AutoMod, scheduled events, invites, Community/onboarding/welcome screen, branding); fixed the Nov-2025 permission split (`PIN_MESSAGES`, `BYPASS_SLOWMODE`, `CREATE_GUILD_EXPRESSIONS`, `CREATE_EVENTS`); fixed raw-`fetch` rate-limit bypass; bumped discord.js + MCP SDK; added a test suite.
 - **2.0.0** — Rewrite from AppleScript to the Discord Bot API (discord.js).
 

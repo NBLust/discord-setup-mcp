@@ -36,15 +36,17 @@ src/
 │   └── config.ts         token loading (env DISCORD_BOT_TOKEN or ~/.discord-mcp/config.json)
 ├── services/
 │   ├── guild.ts          REST guild resolution (resolveGuildId), info, fetchChannels/Roles
-│   ├── permissions.ts    name <-> bitfield map (incl. Nov-2025 split bits)
-│   ├── content.ts        buildEmbed / buildLinkButtons (pure, validated)
+│   ├── permissions.ts    name <-> bitfield map (strict: unknown names throw; legacy/UI
+│   │                     synonyms accepted; PERMISSION_NAMES derived from discord.js)
+│   ├── content.ts        buildEmbed / buildLinkButtons + shared EmbedZ zod schema (pure)
+│   ├── messages.ts       pinMessage (new pins endpoint with legacy fallback)
 │   ├── blueprint.ts      schema, YAML/JSON loader, classifyByName diff, plan/apply/export
 │   ├── features.ts       buildAutomodRuleBody / buildScheduledEventBody / bufferToDataUri (pure)
 │   └── templates.ts      preset application over REST
 ├── tools/                guild, channels, roles, settings, templates, content,
 │                         blueprint, automod, events, invites, community, branding
 ├── templates/            4 presets (gaming/community/business/study-group)
-└── utils/errors.ts       DiscordMCPError hierarchy (+ CommunityRequiredError)
+└── utils/                errors.ts (DiscordMCPError hierarchy), color.ts (parseColor)
 ```
 
 ### REST conventions
@@ -73,5 +75,6 @@ Unit tests (vitest, no network) cover the pure logic: permission mapping, embed/
 
 ## Version History
 
+- **3.1.0** — Strict permission mapping (unknown names throw; legacy synonyms accepted; PERMISSION_NAMES derived from discord.js); shared parseColor/pinMessage/EmbedZ helpers; blueprint plan/apply warn on unknown overwrite roles; announcement-channel seeding; voice bitrate/userLimit diffing; rateLimit.maxRetries wired into REST; removed dead utils/validation.ts.
 - **3.0.0** — REST-only rewrite; blueprint engine; content layer; server-feature tools; Nov-2025 permission split fix; rate-limit fix; dep bumps; test suite.
 - **2.0.0** — AppleScript → Discord Bot API (discord.js).

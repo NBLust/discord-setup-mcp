@@ -7,7 +7,10 @@ let restInstance: REST | null = null;
 export function getRest(): REST {
   if (restInstance) return restInstance;
   const config = getConfig();
-  restInstance = new REST({ version: '10' }).setToken(config.discordToken);
+  restInstance = new REST({
+    version: '10',
+    retries: config.rateLimit.maxRetries,
+  }).setToken(config.discordToken);
   return restInstance;
 }
 

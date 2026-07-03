@@ -3,7 +3,9 @@
  * shapes used by the content tools. REST sends live in tools/content.ts.
  */
 
+import { z } from 'zod';
 import { ValidationError } from '../utils/errors.js';
+import { parseColor } from '../utils/color.js';
 
 export interface EmbedFieldInput {
   name: string;
@@ -24,6 +26,20 @@ export interface EmbedInput {
   timestamp?: boolean | string;
 }
 
+/** Zod shape of EmbedInput — shared by the content tools and blueprints. */
+export const EmbedZ = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  url: z.string().optional(),
+  color: z.union([z.string(), z.number()]).optional(),
+  fields: z.array(z.object({ name: z.string(), value: z.string(), inline: z.boolean().optional() })).optional(),
+  author: z.object({ name: z.string(), url: z.string().optional(), iconUrl: z.string().optional() }).optional(),
+  footer: z.object({ text: z.string(), iconUrl: z.string().optional() }).optional(),
+  image: z.string().optional(),
+  thumbnail: z.string().optional(),
+  timestamp: z.union([z.boolean(), z.string()]).optional(),
+});
+
 export interface DiscordEmbed {
   title?: string;
   description?: string;
@@ -35,11 +51,6 @@ export interface DiscordEmbed {
   image?: { url: string };
   thumbnail?: { url: string };
   timestamp?: string;
-}
-
-function colorToInt(color: string | number | undefined): number | undefined {
-  if (color === undefined) return undefined;
-  return typeof color === 'string' ? parseInt(color.replace('#', ''), 16) : color;
 }
 
 /** Build and validate a Discord embed object from friendly input. */
@@ -54,7 +65,7 @@ export function buildEmbed(input: EmbedInput): DiscordEmbed {
     embed.description = input.description;
   }
   if (input.url !== undefined) embed.url = input.url;
-  const color = colorToInt(input.color);
+  const color = parseColor(input.color);
   if (color !== undefined) embed.color = color;
   if (input.fields) {
     if (input.fields.length > 25) throw new ValidationError('Embed cannot have more than 25 fields');

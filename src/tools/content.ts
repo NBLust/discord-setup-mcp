@@ -8,21 +8,9 @@
 import { z } from 'zod';
 import { Routes } from 'discord.js';
 import { getRest } from '../client/rest.js';
-import { buildEmbed, buildLinkButtons, type EmbedInput, type LinkButtonInput } from '../services/content.js';
-import { wrapDiscordError } from '../utils/errors.js';
-
-const EmbedZod = z.object({
-  title: z.string().optional(),
-  description: z.string().optional(),
-  url: z.string().optional(),
-  color: z.union([z.string(), z.number()]).optional(),
-  fields: z.array(z.object({ name: z.string(), value: z.string(), inline: z.boolean().optional() })).optional(),
-  author: z.object({ name: z.string(), url: z.string().optional(), iconUrl: z.string().optional() }).optional(),
-  footer: z.object({ text: z.string(), iconUrl: z.string().optional() }).optional(),
-  image: z.string().optional(),
-  thumbnail: z.string().optional(),
-  timestamp: z.union([z.boolean(), z.string()]).optional(),
-});
+import { buildEmbed, buildLinkButtons, EmbedZ, type EmbedInput, type LinkButtonInput } from '../services/content.js';
+import { pinMessage } from '../services/messages.js';
+import { wrapDiscordError, ValidationError } from '../utils/errors.js';
 
 function fail(error: unknown, ctx: string) {
   const e = wrapDiscordError(error, ctx);
@@ -97,7 +85,7 @@ export const postEmbedToolDefinition = {
 export const PostEmbedInputSchema = z.object({
   channelId: z.string().min(1),
   content: z.string().max(2000).optional(),
-  embed: EmbedZod,
+  embed: EmbedZ,
 });
 export type PostEmbedInput = z.infer<typeof PostEmbedInputSchema>;
 
@@ -137,16 +125,7 @@ export type PinMessageInput = z.infer<typeof PinMessageInputSchema>;
 
 export async function pinMessageHandler(input: PinMessageInput) {
   try {
-    // New pins endpoint (Nov-2025); falls back to the legacy route on 404.
-    try {
-      await getRest().put(`/channels/${input.channelId}/messages/pins/${input.messageId}`);
-    } catch (e: any) {
-      if (e?.status === 404 || e?.code === 0) {
-        await getRest().put(Routes.channelPin(input.channelId, input.messageId));
-      } else {
-        throw e;
-      }
-    }
+    await pinMessage(input.channelId, input.messageId);
     return { success: true as const, data: { channelId: input.channelId, messageId: input.messageId, message: 'Message pinned' } };
   } catch (error) {
     return fail(error, 'pin_message');
@@ -214,7 +193,7 @@ export const PostViaWebhookInputSchema = z.object({
   username: z.string().min(1).max(80),
   avatarUrl: z.string().optional(),
   content: z.string().max(2000).optional(),
-  embed: EmbedZod.optional(),
+  embed: EmbedZ.optional(),
 });
 export type PostViaWebhookInput = z.infer<typeof PostViaWebhookInputSchema>;
 
@@ -222,7 +201,7 @@ export async function postViaWebhookHandler(input: PostViaWebhookInput) {
   let webhook: any;
   try {
     if (!input.content && !input.embed) {
-      return fail(new Error('Provide content or embed'), 'post_via_webhook');
+      return fail(new ValidationError('Provide content or embed'), 'post_via_webhook');
     }
     webhook = (await getRest().post(Routes.channelWebhooks(input.channelId), {
       body: { name: 'mcp-persona' },

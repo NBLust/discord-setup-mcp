@@ -131,7 +131,47 @@ import { setServerBrandingToolDefinition, setServerBrandingHandler, SetServerBra
 
 // Server metadata
 const SERVER_NAME = 'discord-setup-mcp';
-const SERVER_VERSION = '3.0.0'; // REST-only rewrite + blueprint engine + content layer
+const SERVER_VERSION = '3.1.0';
+
+interface ToolResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+/**
+ * Register a tool: validate input against the zod schema, run the handler
+ * (sync or async), and serialize the result — or any thrown error — as JSON
+ * text content.
+ */
+function registerTool<T extends z.ZodObject<any>>(
+  server: McpServer,
+  definition: { name: string; description: string; inputSchema: unknown },
+  schema: T,
+  handler: (input: z.infer<T>) => ToolResult | Promise<ToolResult>
+): void {
+  server.registerTool(
+    definition.name,
+    { description: definition.description, inputSchema: schema.shape },
+    async (params: unknown) => {
+      let result: ToolResult;
+      try {
+        const parseResult = schema.safeParse(params);
+        if (!parseResult.success) {
+          result = { success: false, error: `Validation error: ${parseResult.error.message}` };
+        } else {
+          result = await handler(parseResult.data);
+        }
+      } catch (error) {
+        result = {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
+        };
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+    }
+  );
+}
 
 /**
  * Create and configure the MCP server with all tools registered
@@ -148,328 +188,91 @@ function createServer(): McpServer {
       },
       instructions: `Discord Server Setup MCP Server
 
-This server provides tools for automating Discord server setup using the Discord Bot API.
-It can discover servers, create/manage channels, create/manage roles, configure settings, and apply templates.
+Builds out and fills a Discord server through a bot over the REST API: structure
+(channels, categories, roles, permissions, settings), content (messages, embeds,
+pins, forum posts, webhook personas, link buttons), server features (AutoMod,
+scheduled events, invites, Community, onboarding, welcome screen, branding),
+and full custom blueprints applied idempotently.
 
-Available tool categories:
-- Guild: List servers, select active server, get server info
-- Channels: Create/edit/delete channels and categories
-- Roles: Create/edit/delete/reorder roles
-- Settings: Configure server verification, content filter, notifications
-- Templates: Apply pre-built server templates (gaming, community, business, study-group)
+Important: a bot CANNOT create a blank server (Discord rejects it). The user
+must create an empty server and invite the bot to it first.
 
-Prerequisites:
-- Discord bot created at https://discord.com/developers/applications
-- Bot token configured via DISCORD_BOT_TOKEN environment variable or ~/.discord-mcp/config.json
-- Bot invited to Discord server(s) with appropriate permissions (Manage Server, Manage Roles, Manage Channels)
+Tool categories:
+- Guild: list_guilds, select_guild, get_guild_info
+- Blueprints (preferred for whole-server builds): plan_blueprint (dry-run),
+  apply_blueprint (idempotent), export_server (clone to blueprint)
+- Channels: create_category, create_channel, edit_channel, delete_channel
+- Roles: create_role, edit_role, delete_role, reorder_roles
+- Settings: update_server_settings, set_verification_level, set_content_filter,
+  set_default_notifications
+- Content: send_message, post_embed, pin_message, create_forum_post,
+  post_via_webhook, post_message_with_components (link buttons only)
+- Server features: configure_automod, create_scheduled_event, create_invite,
+  enable_community, configure_onboarding, set_welcome_screen, set_server_branding
+- Templates: list_templates, preview_template, apply_template
 
-Setup Instructions:
-1. Create a Discord application at https://discord.com/developers/applications
-2. Add a bot user and copy the bot token
-3. Set DISCORD_BOT_TOKEN environment variable or create ~/.discord-mcp/config.json with your token
-4. Generate OAuth2 URL with bot scope and required permissions
-5. Invite bot to your Discord server(s)
+Permission names use SCREAMING_SNAKE_CASE (e.g. VIEW_CHANNEL, MANAGE_MESSAGES).
+Announcement/stage channels, onboarding, and the welcome screen require the
+Community feature — run enable_community first.
 
 Workflow:
-1. Use list_guilds to see available servers
-2. Use select_guild to set the active server
-3. Use other tools to manage channels, roles, etc.`,
+1. list_guilds to see available servers, select_guild to set the active one
+2. For a whole server: plan_blueprint to preview, then apply_blueprint
+3. For single operations: use the individual channel/role/content tools`,
     }
   );
 
-  // Register guild tools
-  registerAsyncTool(
-    server,
-    'list_guilds',
-    listGuildsToolDefinition,
-    ListGuildsInputSchema,
-    listGuildsHandler
-  );
-  registerAsyncTool(
-    server,
-    'select_guild',
-    selectGuildToolDefinition,
-    SelectGuildInputSchema,
-    selectGuildHandler
-  );
-  registerAsyncTool(
-    server,
-    'get_guild_info',
-    getGuildInfoToolDefinition,
-    GetGuildInfoInputSchema,
-    getGuildInfoHandler
-  );
+  // Guild tools
+  registerTool(server, listGuildsToolDefinition, ListGuildsInputSchema, listGuildsHandler);
+  registerTool(server, selectGuildToolDefinition, SelectGuildInputSchema, selectGuildHandler);
+  registerTool(server, getGuildInfoToolDefinition, GetGuildInfoInputSchema, getGuildInfoHandler);
 
-  // Register channel tools
-  registerAsyncTool(
-    server,
-    'create_category',
-    createCategoryToolDefinition,
-    CreateCategoryInputSchema,
-    createCategoryHandler
-  );
-  registerAsyncTool(
-    server,
-    'create_channel',
-    createChannelToolDefinition,
-    CreateChannelInputSchema,
-    createChannelHandler
-  );
-  registerAsyncTool(
-    server,
-    'edit_channel',
-    editChannelToolDefinition,
-    EditChannelInputSchema,
-    editChannelHandler
-  );
-  registerAsyncTool(
-    server,
-    'delete_channel',
-    deleteChannelToolDefinition,
-    DeleteChannelInputSchema,
-    deleteChannelHandler
-  );
+  // Channel tools
+  registerTool(server, createCategoryToolDefinition, CreateCategoryInputSchema, createCategoryHandler);
+  registerTool(server, createChannelToolDefinition, CreateChannelInputSchema, createChannelHandler);
+  registerTool(server, editChannelToolDefinition, EditChannelInputSchema, editChannelHandler);
+  registerTool(server, deleteChannelToolDefinition, DeleteChannelInputSchema, deleteChannelHandler);
 
-  // Register role tools
-  registerAsyncTool(
-    server,
-    'create_role',
-    createRoleToolDefinition,
-    CreateRoleInputSchema,
-    createRoleHandler
-  );
-  registerAsyncTool(
-    server,
-    'edit_role',
-    editRoleToolDefinition,
-    EditRoleInputSchema,
-    editRoleHandler
-  );
-  registerAsyncTool(
-    server,
-    'delete_role',
-    deleteRoleToolDefinition,
-    DeleteRoleInputSchema,
-    deleteRoleHandler
-  );
-  registerAsyncTool(
-    server,
-    'reorder_roles',
-    reorderRolesToolDefinition,
-    ReorderRolesInputSchema,
-    reorderRolesHandler
-  );
+  // Role tools
+  registerTool(server, createRoleToolDefinition, CreateRoleInputSchema, createRoleHandler);
+  registerTool(server, editRoleToolDefinition, EditRoleInputSchema, editRoleHandler);
+  registerTool(server, deleteRoleToolDefinition, DeleteRoleInputSchema, deleteRoleHandler);
+  registerTool(server, reorderRolesToolDefinition, ReorderRolesInputSchema, reorderRolesHandler);
 
-  // Register settings tools
-  registerAsyncTool(
-    server,
-    'update_server_settings',
-    updateServerSettingsToolDefinition,
-    UpdateServerSettingsInputSchema,
-    updateServerSettingsHandler
-  );
-  registerAsyncTool(
-    server,
-    'set_verification_level',
-    setVerificationLevelToolDefinition,
-    SetVerificationLevelInputSchema,
-    setVerificationLevelHandler
-  );
-  registerAsyncTool(
-    server,
-    'set_content_filter',
-    setContentFilterToolDefinition,
-    SetContentFilterInputSchema,
-    setContentFilterHandler
-  );
-  registerAsyncTool(
-    server,
-    'set_default_notifications',
-    setDefaultNotificationsToolDefinition,
-    SetDefaultNotificationsInputSchema,
-    setDefaultNotificationsHandler
-  );
+  // Settings tools
+  registerTool(server, updateServerSettingsToolDefinition, UpdateServerSettingsInputSchema, updateServerSettingsHandler);
+  registerTool(server, setVerificationLevelToolDefinition, SetVerificationLevelInputSchema, setVerificationLevelHandler);
+  registerTool(server, setContentFilterToolDefinition, SetContentFilterInputSchema, setContentFilterHandler);
+  registerTool(server, setDefaultNotificationsToolDefinition, SetDefaultNotificationsInputSchema, setDefaultNotificationsHandler);
 
-  // Register template tools
-  registerSyncTool(
-    server,
-    'list_templates',
-    listTemplatesToolDefinition,
-    ListTemplatesInputSchema,
-    listTemplatesHandler
-  );
-  registerSyncTool(
-    server,
-    'preview_template',
-    previewTemplateToolDefinition,
-    PreviewTemplateInputSchema,
-    previewTemplateHandler
-  );
-  registerAsyncTool(
-    server,
-    'apply_template',
-    applyTemplateToolDefinition,
-    ApplyTemplateInputSchema,
-    applyTemplateHandler
-  );
+  // Template tools
+  registerTool(server, listTemplatesToolDefinition, ListTemplatesInputSchema, listTemplatesHandler);
+  registerTool(server, previewTemplateToolDefinition, PreviewTemplateInputSchema, previewTemplateHandler);
+  registerTool(server, applyTemplateToolDefinition, ApplyTemplateInputSchema, applyTemplateHandler);
 
-  // Register content tools
-  registerAsyncTool(server, 'send_message', sendMessageToolDefinition, SendMessageInputSchema, sendMessageHandler);
-  registerAsyncTool(server, 'post_embed', postEmbedToolDefinition, PostEmbedInputSchema, postEmbedHandler);
-  registerAsyncTool(server, 'pin_message', pinMessageToolDefinition, PinMessageInputSchema, pinMessageHandler);
-  registerAsyncTool(server, 'create_forum_post', createForumPostToolDefinition, CreateForumPostInputSchema, createForumPostHandler);
-  registerAsyncTool(server, 'post_via_webhook', postViaWebhookToolDefinition, PostViaWebhookInputSchema, postViaWebhookHandler);
-  registerAsyncTool(server, 'post_message_with_components', postMessageWithComponentsToolDefinition, PostMessageWithComponentsInputSchema, postMessageWithComponentsHandler);
+  // Content tools
+  registerTool(server, sendMessageToolDefinition, SendMessageInputSchema, sendMessageHandler);
+  registerTool(server, postEmbedToolDefinition, PostEmbedInputSchema, postEmbedHandler);
+  registerTool(server, pinMessageToolDefinition, PinMessageInputSchema, pinMessageHandler);
+  registerTool(server, createForumPostToolDefinition, CreateForumPostInputSchema, createForumPostHandler);
+  registerTool(server, postViaWebhookToolDefinition, PostViaWebhookInputSchema, postViaWebhookHandler);
+  registerTool(server, postMessageWithComponentsToolDefinition, PostMessageWithComponentsInputSchema, postMessageWithComponentsHandler);
 
-  // Register blueprint tools
-  registerAsyncTool(server, 'apply_blueprint', applyBlueprintToolDefinition, ApplyBlueprintInputSchema, applyBlueprintHandler);
-  registerAsyncTool(server, 'plan_blueprint', planBlueprintToolDefinition, PlanBlueprintInputSchema, planBlueprintHandler);
-  registerAsyncTool(server, 'export_server', exportServerToolDefinition, ExportServerInputSchema, exportServerHandler);
+  // Blueprint tools
+  registerTool(server, applyBlueprintToolDefinition, ApplyBlueprintInputSchema, applyBlueprintHandler);
+  registerTool(server, planBlueprintToolDefinition, PlanBlueprintInputSchema, planBlueprintHandler);
+  registerTool(server, exportServerToolDefinition, ExportServerInputSchema, exportServerHandler);
 
-  // Register server-feature tools
-  registerAsyncTool(server, 'configure_automod', configureAutomodToolDefinition, ConfigureAutomodInputSchema, configureAutomodHandler);
-  registerAsyncTool(server, 'create_scheduled_event', createScheduledEventToolDefinition, CreateScheduledEventInputSchema, createScheduledEventHandler);
-  registerAsyncTool(server, 'create_invite', createInviteToolDefinition, CreateInviteInputSchema, createInviteHandler);
-  registerAsyncTool(server, 'enable_community', enableCommunityToolDefinition, EnableCommunityInputSchema, enableCommunityHandler);
-  registerAsyncTool(server, 'configure_onboarding', configureOnboardingToolDefinition, ConfigureOnboardingInputSchema, configureOnboardingHandler);
-  registerAsyncTool(server, 'set_welcome_screen', setWelcomeScreenToolDefinition, SetWelcomeScreenInputSchema, setWelcomeScreenHandler);
-  registerAsyncTool(server, 'set_server_branding', setServerBrandingToolDefinition, SetServerBrandingInputSchema, setServerBrandingHandler);
+  // Server-feature tools
+  registerTool(server, configureAutomodToolDefinition, ConfigureAutomodInputSchema, configureAutomodHandler);
+  registerTool(server, createScheduledEventToolDefinition, CreateScheduledEventInputSchema, createScheduledEventHandler);
+  registerTool(server, createInviteToolDefinition, CreateInviteInputSchema, createInviteHandler);
+  registerTool(server, enableCommunityToolDefinition, EnableCommunityInputSchema, enableCommunityHandler);
+  registerTool(server, configureOnboardingToolDefinition, ConfigureOnboardingInputSchema, configureOnboardingHandler);
+  registerTool(server, setWelcomeScreenToolDefinition, SetWelcomeScreenInputSchema, setWelcomeScreenHandler);
+  registerTool(server, setServerBrandingToolDefinition, SetServerBrandingInputSchema, setServerBrandingHandler);
 
   return server;
-}
-
-/**
- * Helper function to register a synchronous tool (no async operations)
- */
-function registerSyncTool<T extends z.ZodObject<any>>(
-  server: McpServer,
-  name: string,
-  definition: { name: string; description: string; inputSchema: unknown },
-  schema: T,
-  handler: (input: z.infer<T>) => {
-    success: boolean;
-    data?: unknown;
-    error?: string;
-  }
-): void {
-  server.registerTool(
-    definition.name,
-    { description: definition.description, inputSchema: schema.shape },
-    (params: unknown) => {
-      try {
-        // Validate input
-        const parseResult = schema.safeParse(params);
-        if (!parseResult.success) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: false,
-                  error: `Validation error: ${parseResult.error.message}`,
-                }),
-              },
-            ],
-          };
-        }
-
-        // Execute handler
-        const result = handler(parseResult.data);
-
-        // Return result
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(result),
-            },
-          ],
-        };
-      } catch (error) {
-        // Catch unexpected errors
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error occurred';
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: errorMessage,
-              }),
-            },
-          ],
-        };
-      }
-    }
-  );
-}
-
-/**
- * Helper function to register an async tool that performs Discord operations
- */
-function registerAsyncTool<T extends z.ZodObject<any>>(
-  server: McpServer,
-  name: string,
-  definition: { name: string; description: string; inputSchema: unknown },
-  schema: T,
-  handler: (input: z.infer<T>) => Promise<{
-    success: boolean;
-    data?: unknown;
-    error?: string;
-  }>
-): void {
-  server.registerTool(
-    definition.name,
-    { description: definition.description, inputSchema: schema.shape },
-    async (params: unknown) => {
-      try {
-        // Validate input
-        const parseResult = schema.safeParse(params);
-        if (!parseResult.success) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: false,
-                  error: `Validation error: ${parseResult.error.message}`,
-                }),
-              },
-            ],
-          };
-        }
-
-        // Execute handler
-        const result = await handler(parseResult.data);
-
-        // Return result
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(result),
-            },
-          ],
-        };
-      } catch (error) {
-        // Catch unexpected errors
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error occurred';
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: errorMessage,
-              }),
-            },
-          ],
-        };
-      }
-    }
-  );
 }
 
 /**

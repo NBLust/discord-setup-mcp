@@ -99,7 +99,7 @@ src/
 │   └── *.ts              # Individual template files
 └── utils/                # Utility functions
     ├── errors.ts         # Custom error classes
-    └── validation.ts     # Zod schemas for input validation
+    └── color.ts          # Shared color parsing/validation
 ```
 
 ## How to Contribute
@@ -147,7 +147,7 @@ export async function myToolHandler(input: MyToolInput): Promise<Result> {
 ```
 
 3. Register the tool in `src/index.ts`
-4. Add validation schema to `src/utils/validation.ts` if needed
+4. Keep the zod input schema next to the tool definition in its module
 
 ### Adding a New Template
 

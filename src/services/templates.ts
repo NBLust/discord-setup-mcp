@@ -8,6 +8,7 @@ import { Routes } from 'discord.js';
 import { getRest } from '../client/rest.js';
 import { fetchChannels, fetchRoles } from './guild.js';
 import { permissionNamesToBitfield } from './permissions.js';
+import { parseColor } from '../utils/color.js';
 import type {
   ServerTemplate,
   ChannelPermissionOverride,
@@ -15,10 +16,6 @@ import type {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function hexToColorInt(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16);
 }
 
 const CHANNEL_TYPE: Record<string, number> = {
@@ -70,7 +67,7 @@ export async function applyTemplate(
         await rest.post(Routes.guildRoles(guildId), {
           body: {
             name: roleConfig.name,
-            color: hexToColorInt(roleConfig.color),
+            color: parseColor(roleConfig.color),
             hoist: roleConfig.hoist,
             mentionable: roleConfig.mentionable,
             permissions: permissionNamesToBitfield(roleConfig.permissions),

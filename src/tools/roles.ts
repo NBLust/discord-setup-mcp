@@ -7,36 +7,18 @@ import { z } from 'zod';
 import { Routes } from 'discord.js';
 import { getRest } from '../client/rest.js';
 import { resolveGuildId } from '../services/guild.js';
-import { permissionNamesToBitfield } from '../services/permissions.js';
+import { permissionNamesToBitfield, PERMISSION_NAMES } from '../services/permissions.js';
 import { wrapDiscordError } from '../utils/errors.js';
+import { parseColor } from '../utils/color.js';
 
-const PermissionSchema = z.enum([
-  'CREATE_INSTANT_INVITE', 'KICK_MEMBERS', 'BAN_MEMBERS', 'ADMINISTRATOR',
-  'MANAGE_CHANNELS', 'MANAGE_GUILD', 'ADD_REACTIONS', 'VIEW_AUDIT_LOG',
-  'PRIORITY_SPEAKER', 'STREAM', 'VIEW_CHANNEL', 'SEND_MESSAGES',
-  'SEND_TTS_MESSAGES', 'MANAGE_MESSAGES', 'EMBED_LINKS', 'ATTACH_FILES',
-  'READ_MESSAGE_HISTORY', 'MENTION_EVERYONE', 'USE_EXTERNAL_EMOJIS',
-  'VIEW_GUILD_INSIGHTS', 'CONNECT', 'SPEAK', 'MUTE_MEMBERS', 'DEAFEN_MEMBERS',
-  'MOVE_MEMBERS', 'USE_VAD', 'CHANGE_NICKNAME', 'MANAGE_NICKNAMES',
-  'MANAGE_ROLES', 'MANAGE_WEBHOOKS', 'MANAGE_GUILD_EXPRESSIONS',
-  'USE_APPLICATION_COMMANDS', 'REQUEST_TO_SPEAK', 'MANAGE_EVENTS',
-  'MANAGE_THREADS', 'CREATE_PUBLIC_THREADS', 'CREATE_PRIVATE_THREADS',
-  'USE_EXTERNAL_STICKERS', 'SEND_MESSAGES_IN_THREADS', 'USE_EMBEDDED_ACTIVITIES',
-  'MODERATE_MEMBERS', 'VIEW_CREATOR_MONETIZATION_ANALYTICS', 'USE_SOUNDBOARD',
-  'USE_EXTERNAL_SOUNDS', 'SEND_VOICE_MESSAGES',
-  // Nov-2025 split additions:
-  'PIN_MESSAGES', 'BYPASS_SLOWMODE', 'CREATE_GUILD_EXPRESSIONS', 'CREATE_EVENTS',
-]);
+// Derived from the installed discord.js so new permission bits are accepted
+// without touching this file.
+const PermissionSchema = z.enum([...PERMISSION_NAMES] as [string, ...string[]]);
 
 const ColorSchema = z.union([
   z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Color must be a hex code like #FF0000'),
   z.number().int().min(0).max(16777215),
 ]);
-
-function colorToInt(color: string | number | undefined): number | undefined {
-  if (color === undefined) return undefined;
-  return typeof color === 'string' ? parseInt(color.replace('#', ''), 16) : color;
-}
 
 // ============================================================================
 // CREATE ROLE
@@ -82,7 +64,7 @@ export async function createRoleHandler(
       hoist: input.hoist,
       mentionable: input.mentionable,
     };
-    const colorInt = colorToInt(input.color);
+    const colorInt = parseColor(input.color);
     if (colorInt !== undefined) body.color = colorInt;
     if (input.permissions) body.permissions = permissionNamesToBitfield(input.permissions);
 
@@ -158,7 +140,7 @@ export async function editRoleHandler(
     if (input.name !== undefined) body.name = input.name;
     if (input.hoist !== undefined) body.hoist = input.hoist;
     if (input.mentionable !== undefined) body.mentionable = input.mentionable;
-    const colorInt = colorToInt(input.color);
+    const colorInt = parseColor(input.color);
     if (colorInt !== undefined) body.color = colorInt;
     if (input.permissions !== undefined) body.permissions = permissionNamesToBitfield(input.permissions);
 
