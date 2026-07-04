@@ -109,6 +109,37 @@ export function loadBlueprint(input: { blueprint?: unknown; file?: string }): Bl
 }
 
 // ============================================================================
+// VALIDATION
+// ============================================================================
+
+/**
+ * Fail fast on invalid permission names anywhere in the blueprint (role
+ * permissions and overwrite allow/deny lists). Called by both plan and apply
+ * so a typo surfaces in the dry-run — never mid-apply after mutations began.
+ */
+export function validateBlueprintPermissions(bp: Blueprint): void {
+  const check = (names: string[] | undefined, where: string) => {
+    if (!names) return;
+    try {
+      permissionNamesToBitfield(names);
+    } catch (e) {
+      throw new ValidationError(`${where}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  const checkOverwrites = (ows: Array<{ role: string; allow?: string[]; deny?: string[] }> | undefined, owner: string) => {
+    for (const o of ows ?? []) {
+      check(o.allow, `${owner}, overwrite for "${o.role}" (allow)`);
+      check(o.deny, `${owner}, overwrite for "${o.role}" (deny)`);
+    }
+  };
+  for (const r of bp.roles ?? []) check(r.permissions, `Role "${r.name}"`);
+  for (const cat of bp.categories ?? []) {
+    checkOverwrites(cat.overwrites, `Category "${cat.name}"`);
+    for (const ch of cat.channels) checkOverwrites(ch.overwrites, `Channel "${ch.name}"`);
+  }
+}
+
+// ============================================================================
 // PURE DIFF
 // ============================================================================
 
@@ -163,6 +194,7 @@ function channelEqual(d: z.infer<typeof ChannelZ>, live: any): boolean {
 // ============================================================================
 
 export async function planBlueprint(guildId: string, bp: Blueprint) {
+  validateBlueprintPermissions(bp);
   const rest = getRest();
   const [guild, liveChannels, liveRoles] = await Promise.all([
     rest.get(Routes.guild(guildId)) as Promise<any>,
@@ -254,6 +286,7 @@ export async function applyBlueprint(
   bp: Blueprint,
   opts: { seedMessages?: boolean; throttleDelay?: number } = {}
 ) {
+  validateBlueprintPermissions(bp);
   const rest = getRest();
   const throttle = opts.throttleDelay ?? 400;
   const seed = opts.seedMessages !== false;

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { loadBlueprint, classifyByName, BlueprintZ } from '../src/services/blueprint.js';
+import { loadBlueprint, classifyByName, BlueprintZ, validateBlueprintPermissions } from '../src/services/blueprint.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'bp-'));
 
@@ -29,6 +29,26 @@ describe('loadBlueprint', () => {
 
   it('throws on an invalid blueprint', () => {
     expect(() => loadBlueprint({ blueprint: { roles: 'not-an-array' } })).toThrow();
+  });
+});
+
+describe('validateBlueprintPermissions', () => {
+  it('accepts valid names and legacy synonyms everywhere', () => {
+    expect(() => validateBlueprintPermissions({
+      roles: [{ name: 'Mod', permissions: ['MANAGE_MESSAGES', 'TIMEOUT_MEMBERS'] }],
+      categories: [{ name: 'C', overwrites: [{ role: 'Mod', allow: ['VIEW_CHANNELS'] }], channels: [
+        { name: 'x', type: 'text', overwrites: [{ role: '@everyone', deny: ['SEND_MESSAGES'] }] },
+      ] }],
+    })).not.toThrow();
+  });
+  it('rejects a typo in role permissions with the role named', () => {
+    expect(() => validateBlueprintPermissions({ roles: [{ name: 'Broken', permissions: ['VEIW_CHANNEL'] }] }))
+      .toThrow(/Role "Broken".*Unknown permission name/s);
+  });
+  it('rejects a typo in a channel overwrite deny list', () => {
+    expect(() => validateBlueprintPermissions({
+      categories: [{ name: 'C', channels: [{ name: 'x', type: 'text', overwrites: [{ role: '@everyone', deny: ['SEND_MESAGES'] }] }] }],
+    })).toThrow(/Channel "x".*deny.*Unknown permission name/s);
   });
 });
 

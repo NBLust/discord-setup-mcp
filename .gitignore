@@ -25,3 +25,6 @@ npm-debug.log*
 .claude/
 claude-progress.txt
 init.sh
+
+# compiled live-check output
+.livecheck/
