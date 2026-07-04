@@ -1,13 +1,14 @@
 /**
- * Live content smoke test — ONLY against `mcp-test`. Self-cleaning.
- *   node tests/live-smoke-content.mjs
+ * Live content smoke test — ONLY against a dedicated test guild
+ * (MCP_TEST_GUILD_ID env var, or the default `mcp-test`). Self-cleaning.
+ *   MCP_TEST_GUILD_ID=<your-test-guild-id> node tests/live-smoke-content.mjs
  */
 import { REST, Routes } from 'discord.js';
 import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
-const GID = '1518725132057710653';
+const GID = process.env.MCP_TEST_GUILD_ID || '1518725132057710653';
 const token = JSON.parse(readFileSync(join(homedir(), '.discord-mcp', 'config.json'), 'utf-8')).discordToken;
 const rest = new REST({ version: '10' }).setToken(token);
 

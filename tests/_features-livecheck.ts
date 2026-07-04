@@ -16,7 +16,7 @@ import { createInviteHandler } from '../src/tools/invites.js';
 import { enableCommunityHandler, setWelcomeScreenHandler, configureOnboardingHandler } from '../src/tools/community.js';
 import { setServerBrandingHandler } from '../src/tools/branding.js';
 
-const GID = '1518725132057710653';
+const GID = process.env.MCP_TEST_GUILD_ID || '1518725132057710653';
 const rest = getRest();
 let pass = 0, fail = 0;
 const ok = (n: string, c: boolean, extra?: any) => { if (c) { pass++; console.log('  PASS', n); } else { fail++; console.log('  FAIL', n, extra ? JSON.stringify(extra) : ''); } };

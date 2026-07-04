@@ -1,16 +1,17 @@
 /**
- * Live REST smoke test — runs ONLY against the dedicated `mcp-test` guild.
+ * Live REST smoke test — runs ONLY against a dedicated test guild
+ * (MCP_TEST_GUILD_ID env var, or the default `mcp-test` guild).
  * Creates a category, channel, and role, edits, then deletes everything.
  * Reads the bot token from ~/.discord-mcp/config.json. Self-cleaning.
  *
- *   node tests/live-smoke.mjs
+ *   MCP_TEST_GUILD_ID=<your-test-guild-id> node tests/live-smoke.mjs
  */
 import { REST, Routes, PermissionFlagsBits } from 'discord.js';
 import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
-const GID = '1518725132057710653'; // mcp-test
+const GID = process.env.MCP_TEST_GUILD_ID || '1518725132057710653'; // mcp-test
 const token = JSON.parse(readFileSync(join(homedir(), '.discord-mcp', 'config.json'), 'utf-8')).discordToken;
 const rest = new REST({ version: '10' }).setToken(token);
 

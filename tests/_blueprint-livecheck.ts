@@ -8,7 +8,7 @@ import { Routes } from 'discord.js';
 import { getRest } from '../src/client/rest.js';
 import { applyBlueprint, planBlueprint, exportServer, loadBlueprint } from '../src/services/blueprint.js';
 
-const GID = '1518725132057710653'; // mcp-test
+const GID = process.env.MCP_TEST_GUILD_ID || '1518725132057710653'; // mcp-test
 const rest = getRest();
 
 let pass = 0, fail = 0;
